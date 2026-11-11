@@ -64,7 +64,7 @@ impl InProcessCodeModeSession {
             runtime: SessionRuntime::new_with_task_failure_handler(task_failure_handler),
             options: CodeModeSessionOptions {
                 cell_execution_limits: CodeModeSessionCellExecutionLimits {
-                    max_heap_size_bytes: None,
+                    max_heap_size_bytes: options.cell_execution_limits.max_heap_size_bytes,
                     ..options.cell_execution_limits
                 },
                 ..options
@@ -84,7 +84,11 @@ impl InProcessCodeModeSession {
         let started = self
             .runtime
             .execute(
-                runtime_request(request, self.options.output_truncation),
+                runtime_request(
+                    request,
+                    self.options.output_truncation,
+                    self.options.cell_execution_limits.max_heap_size_bytes,
+                ),
                 runtime::ObserveMode::YieldAfter(self.resolve_yield_timeout(yield_time_ms))
                     .with_yield_signal(preempt.unwrap_or_default()),
                 Arc::new(ProtocolDelegate { delegate }),
@@ -121,7 +125,11 @@ impl InProcessCodeModeSession {
         let started = self
             .runtime
             .execute(
-                runtime_request(request, self.options.output_truncation),
+                runtime_request(
+                    request,
+                    self.options.output_truncation,
+                    self.options.cell_execution_limits.max_heap_size_bytes,
+                ),
                 runtime::ObserveMode::PendingFrontier,
                 Arc::new(ProtocolDelegate { delegate }),
             )
@@ -378,8 +386,10 @@ impl runtime::SessionRuntimeDelegate for ProtocolDelegate {
 fn runtime_request(
     request: ExecuteRequest,
     output_truncation: CodeModeOutputTruncation,
+    heap_limit: Option<usize>,
 ) -> runtime::CreateCellRequest {
     runtime::CreateCellRequest {
+        heap_limit,
         output_truncation,
         tool_call_id: request.tool_call_id,
         enabled_tools: request
@@ -392,6 +402,8 @@ fn runtime_request(
                     namespace: definition.tool_name.namespace,
                 },
                 description: definition.description,
+                input_schema: definition.input_schema,
+                output_schema: definition.output_schema,
                 kind: match definition.kind {
                     CodeModeToolKind::Function => runtime::ToolKind::Function,
                     CodeModeToolKind::Freeform => runtime::ToolKind::Freeform,
@@ -506,13 +518,5 @@ fn missing_wait(
 }
 
 #[cfg(test)]
-#[path = "service_tests.rs"]
+#[path = "native_session_tests.rs"]
 mod tests;
-
-#[cfg(test)]
-#[path = "service_contract_tests.rs"]
-mod contract_tests;
-
-#[cfg(test)]
-#[path = "service_output_collection_tests.rs"]
-mod output_collection_tests;

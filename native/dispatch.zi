@@ -1,0 +1,19 @@
+// Borrowed, allocation-free C ABI. Rust owns the catalog and every byte here.
+Tool :: struct { name: *u8; length: s64; kind: s32; }
+
+#program_export
+xcoder_resolve_tool :: (name: *u8, length: s64, tools: *Tool, count: s64) -> s64 {
+    if name == null || length <= 0 || length > 4096 || count < 0 || (count > 0 && tools == null) { return -1 }
+    found: s64 = -1
+    for i: 0..count - 1 {
+        tool := tools[i]
+        if tool.length != length || tool.name == null { continue }
+        equal := true
+        for j: 0..length - 1 { if name[j] != tool.name[j] { equal = false; break } }
+        if equal {
+            if found >= 0 { return -1 }
+            found = i
+        }
+    }
+    return found
+}

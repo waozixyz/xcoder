@@ -23,9 +23,9 @@ pub(super) fn runtime_request(request: CellRequest) -> ExecuteRequest {
                     CellToolKind::Function => CodeModeToolKind::Function,
                     CellToolKind::Freeform => CodeModeToolKind::Freeform,
                 },
-                input_schema: None,
+                input_schema: definition.input_schema,
                 input_schema_max_bytes: None,
-                output_schema: None,
+                output_schema: definition.output_schema,
             })
             .collect(),
         source: request.source,

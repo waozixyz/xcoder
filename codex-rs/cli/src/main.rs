@@ -110,11 +110,12 @@ use codex_protocol::protocol::AskForApproval;
 use codex_protocol::user_input::UserInput;
 use codex_terminal_detection::TerminalName;
 
-/// Codex CLI
+/// Xcoder — Codex with native Ziran tool execution
 ///
 /// If no subcommand is specified, options will be forwarded to the interactive CLI.
 #[derive(Debug, Parser)]
 #[clap(
+    name = "xcoder",
     author,
     version,
     // If a sub‑command is given, ignore requirements of the default args.
@@ -183,7 +184,7 @@ enum Subcommand {
     /// Generate shell completion scripts.
     Completion(CompletionCommand),
 
-    /// Update Codex to the latest version.
+    /// Show how to update the Xcoder source installation.
     Update,
 
     /// Diagnose local Codex installation, config, auth, and runtime health.
@@ -802,6 +803,11 @@ fn run_update_action(
     action: UpdateAction,
     cli_executable: Option<&std::path::Path>,
 ) -> anyhow::Result<()> {
+    if !matches!(action, UpdateAction::Daemon(_)) {
+        anyhow::bail!(
+            "Xcoder is maintained from waozixyz/xcoder. Run `make test` and `make install` in that source repository to update this native fork."
+        );
+    }
     if let UpdateAction::Daemon(source) = action {
         let executable = cli_executable
             .ok_or_else(|| anyhow::anyhow!("Cannot locate the launching Codex CLI"))?;
@@ -1042,6 +1048,14 @@ fn stage_str(stage: Stage) -> &'static str {
 }
 
 fn main() -> anyhow::Result<()> {
+    if std::env::args_os().nth(1).as_deref() == Some(std::ffi::OsStr::new("--xcoder-runtime-info"))
+    {
+        println!(
+            "{}",
+            r#"{"product":"xcoder","tool_language":"ziran","pipeline":"zi2c","javascript_tool_runtime":false}"#
+        );
+        return Ok(());
+    }
     codex_build_info::initialize!();
     let remote_control_disabled = codex_app_server::take_remote_control_disabled_env();
     arg0_dispatch_or_else(move |arg0_paths: Arg0DispatchPaths| async move {
@@ -2543,6 +2557,12 @@ async fn run_interactive_tui(
         return Ok(AppExitInfo::fatal(
             "--no-daemon cannot be used with --remote.",
         ));
+    }
+    // Local fork launches must use this native backend even when a stock Codex
+    // daemon from an earlier installation is still running. Explicit remote
+    // endpoints retain their normal selection and authentication behavior.
+    if remote.is_none() {
+        interactive.no_daemon = true;
     }
     if let Some(prompt) = interactive.prompt.take() {
         // Normalize CRLF/CR to LF so CLI-provided text can't leak `\r` into TUI state.

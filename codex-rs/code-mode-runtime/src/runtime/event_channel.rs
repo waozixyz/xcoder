@@ -57,13 +57,19 @@ impl RuntimeEventReceiver {
 }
 
 impl RuntimeEventSender {
-    /// Bounded sends run only on the dedicated V8 thread, preserving event order
-    /// without making synchronous JavaScript output helpers return promises.
-    /// Capacity limits the backlog between V8 and the cell actor.
+    pub(crate) async fn send(&self, event: RuntimeEvent) -> Result<(), ()> {
+        match self {
+            Self::Legacy(tx) => tx.send(event).map_err(|_| ()),
+            Self::Bounded(tx) => tx.send(event).await.map_err(|_| ()),
+        }
+    }
+    /// Synchronous event injection for channel and actor tests. Production
+    /// native supervisors use the async, bounded send above.
     ///
     /// # Panics
     ///
     /// In server mode, panics if called from an async execution context.
+    #[cfg(test)]
     pub(crate) fn blocking_send(&self, event: RuntimeEvent) -> Result<(), ()> {
         match self {
             Self::Legacy(tx) => tx.send(event).map_err(|_| ()),

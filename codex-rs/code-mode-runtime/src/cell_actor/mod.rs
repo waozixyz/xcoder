@@ -66,12 +66,14 @@ impl CellActor {
         let output = OutputCollector::new(request.output_truncation);
         let (command_tx, command_rx) = mpsc::unbounded_channel();
         let (initial_response_tx, initial_response_rx) = oneshot::channel();
+        let heap_limit = request.heap_limit;
         let (runtime_tx, runtime_control_tx, runtime_terminate_handle) = spawn_runtime(
             stored_values,
             runtime_request(request),
             event_tx,
             PendingRuntimeMode::PauseUntilResumed,
             task_failure_handler.clone(),
+            heap_limit,
         )?;
         let handle = CellHandle::new(command_tx, Arc::clone(&cell_state));
         let task = run_cell(
@@ -98,9 +100,9 @@ impl CellActor {
 }
 
 struct CellContext {
-    runtime_tx: std::sync::mpsc::Sender<RuntimeCommand>,
-    runtime_control_tx: std::sync::mpsc::Sender<RuntimeControlCommand>,
-    runtime_terminate_handle: v8::IsolateHandle,
+    runtime_tx: crate::runtime::RuntimeSender<RuntimeCommand>,
+    runtime_control_tx: crate::runtime::RuntimeSender<RuntimeControlCommand>,
+    runtime_terminate_handle: crate::runtime::TerminationHandle,
     cell_state: Arc<CellState>,
     output: OutputCollector,
 }
@@ -281,7 +283,7 @@ async fn run_cell<H: CellHost>(
                     {
                         runtime_failure_reported = true;
                         task_failure_handler(
-                            "code-mode V8 runtime thread ended unexpectedly".to_string(),
+                            "code-mode native runtime ended unexpectedly".to_string(),
                         );
                     }
                     finish_callbacks(
@@ -347,6 +349,7 @@ async fn run_cell<H: CellHost>(
                         output.push(item);
                     }
                     RuntimeEvent::YieldRequested => {
+                        runtime_paused = true;
                         if let Some(observer) = observer.take_if(|observer| {
                             matches!(observer.observation.mode, ObserveMode::YieldAfter(_))
                         }) {
@@ -558,8 +561,8 @@ fn observer_timer(observer: &Observer) -> Option<std::pin::Pin<Box<tokio::time::
 fn resume_for_observation(
     mode: ObserveMode,
     runtime_paused: &mut bool,
-    runtime_tx: &std::sync::mpsc::Sender<RuntimeCommand>,
-    runtime_control_tx: &std::sync::mpsc::Sender<RuntimeControlCommand>,
+    runtime_tx: &crate::runtime::RuntimeSender<RuntimeCommand>,
+    runtime_control_tx: &crate::runtime::RuntimeSender<RuntimeControlCommand>,
 ) {
     if *runtime_paused {
         let control = match mode {
@@ -574,9 +577,9 @@ fn resume_for_observation(
 }
 
 fn begin_termination(
-    runtime_tx: &std::sync::mpsc::Sender<RuntimeCommand>,
-    runtime_control_tx: &std::sync::mpsc::Sender<RuntimeControlCommand>,
-    runtime_terminate_handle: &v8::IsolateHandle,
+    runtime_tx: &crate::runtime::RuntimeSender<RuntimeCommand>,
+    runtime_control_tx: &crate::runtime::RuntimeSender<RuntimeControlCommand>,
+    runtime_terminate_handle: &crate::runtime::TerminationHandle,
     cancellation_token: &CancellationToken,
 ) {
     cancellation_token.cancel();

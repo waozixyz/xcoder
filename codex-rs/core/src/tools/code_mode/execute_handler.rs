@@ -241,7 +241,7 @@ impl CodeModeExecuteHandler {
                 .await
                 .map(boxed_tool_output),
             _ => Err(FunctionCallError::RespondToModel(format!(
-                "{PUBLIC_TOOL_NAME} expects raw JavaScript source text"
+                "{PUBLIC_TOOL_NAME} expects raw Ziran source text"
             ))),
         };
         telemetry.finish(

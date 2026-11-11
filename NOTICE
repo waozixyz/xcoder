@@ -1,6 +1,11 @@
 OpenAI Codex
 Copyright 2025 OpenAI
 
+Xcoder fork modifications
+Copyright 2026 Waozi <waozi@proton.me>
+This fork changes tool orchestration to native Ziran/Zi2c execution with
+embedded Rust supervision. The original license and upstream notices remain.
+
 This project includes code derived from [Ratatui](https://github.com/ratatui/ratatui), licensed under the MIT license.
 Copyright (c) 2016-2022 Florian Dehau
 Copyright (c) 2023-2025 The Ratatui Developers

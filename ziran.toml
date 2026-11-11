@@ -1,0 +1,10 @@
+[package]
+name = "xcoder"
+module_roots = ["native"]
+
+[toolchain]
+git = "https://github.com/ziranlang/ziran.git"
+ref = "master"
+
+[exports]
+runtime = "native/runtime.zi"

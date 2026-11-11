@@ -12,8 +12,6 @@ mod output_collection;
 mod output_render;
 
 pub(crate) use output_collection::BoundedOutput;
-#[cfg(test)]
-pub(crate) use output_collection::MAX_OUTPUT_ITEMS;
 pub(crate) use output_render::render_output;
 
 /// Bound the buffered server diagnostic independently of model-visible output.

@@ -73,7 +73,10 @@ async fn reports_cell_actor_panics_to_the_owner() {
     })));
     let started = runtime
         .execute(
-            execute_request(r#"text("done");"#),
+            execute_request(
+                r#"using X :: #import "xcoder/runtime"
+main :: () -> s32 { Text("done"); return 0 }"#,
+            ),
             ObserveMode::YieldAfter(Duration::from_secs(1)),
             Arc::new(PanickingClosedDelegate),
         )
@@ -143,10 +146,12 @@ async fn termination_rejects_a_waiting_store_commit_before_the_next_cell_can_loa
     let reader = runtime
         .execute(
             CreateCellRequest {
+                heap_limit: None,
                 output_truncation: CodeModeOutputTruncation::Client,
                 tool_call_id: "reader".to_string(),
                 enabled_tools: Vec::new(),
-                source: r#"text(String(load("candidate")));"#.to_string(),
+                source: r#"using X :: #import "xcoder/runtime"
+main :: () -> s32 { value := Load("candidate"); defer Release(*value); Text(Body(*value)); return 0 }"#.to_string(),
             },
             ObserveMode::YieldAfter(Duration::from_secs(1)),
             Arc::new(RecordingDelegate),
@@ -157,7 +162,7 @@ async fn termination_rejects_a_waiting_store_commit_before_the_next_cell_can_loa
         reader.initial_event().await,
         Ok(CellEvent::Completed {
             content_items: OutputCollector::Client(vec![OutputItem::InputText {
-                text: "undefined".to_string(),
+                text: "{\"ok\":true,\"value\":null}".to_string(),
             }]),
             result_buffered_for: Duration::ZERO,
             error_text: None,
@@ -168,6 +173,7 @@ async fn termination_rejects_a_waiting_store_commit_before_the_next_cell_can_loa
 
 fn execute_request(source: &str) -> CreateCellRequest {
     CreateCellRequest {
+        heap_limit: None,
         output_truncation: CodeModeOutputTruncation::Client,
         tool_call_id: "call-1".to_string(),
         enabled_tools: Vec::new(),
@@ -206,7 +212,7 @@ async fn shutdown_rejects_cell_admission_queued_before_the_registry_lock() {
     let cells = runtime.inner.cells.lock().await;
 
     let execution = runtime.execute(
-        execute_request("while (true) {}"),
+        execute_request("main :: () -> s32 { while true {} ; return 0 }"),
         ObserveMode::YieldAfter(Duration::from_millis(/*millis*/ 1)),
         Arc::new(RecordingDelegate),
     );
@@ -241,7 +247,7 @@ async fn drop_terminates_cells_when_the_registry_is_locked() {
     let runtime = SessionRuntime::new();
     let started = runtime
         .execute(
-            execute_request("while (true) {}"),
+            execute_request("main :: () -> s32 { while true {} ; return 0 }"),
             ObserveMode::YieldAfter(Duration::from_millis(/*millis*/ 1)),
             Arc::new(RecordingDelegate),
         )

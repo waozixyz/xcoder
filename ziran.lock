@@ -1,0 +1,15 @@
+{
+  "format": 1,
+  "packages": [
+
+  ],
+  "root": {
+    "dependencies": {},
+    "name": "xcoder"
+  },
+  "toolchain": {
+    "commit": "61b1e5402a4873dc8e84d727bcbe10d7b3077ad6",
+    "ref": "master",
+    "url": "https://github.com/ziranlang/ziran.git"
+  }
+}

@@ -1302,7 +1302,7 @@ pub const FEATURES: &[FeatureSpec] = &[
         id: Feature::CodeMode,
         key: "code_mode",
         stage: Stage::UnderDevelopment,
-        default_enabled: false,
+        default_enabled: true,
     },
     FeatureSpec {
         id: Feature::CodeModeToolSearch,
@@ -1368,7 +1368,7 @@ pub const FEATURES: &[FeatureSpec] = &[
         id: Feature::CodeModeOnly,
         key: "code_mode_only",
         stage: Stage::UnderDevelopment,
-        default_enabled: false,
+        default_enabled: true,
     },
     FeatureSpec {
         id: Feature::CodeModeOnlyStrictThirdPartyTools,

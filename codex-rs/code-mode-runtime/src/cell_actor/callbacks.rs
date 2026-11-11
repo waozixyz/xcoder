@@ -45,7 +45,7 @@ pub(super) fn spawn_tool<H: CellHost>(
     tasks: &mut JoinSet<()>,
     host: Arc<H>,
     invocation: CellToolCall,
-    runtime_tx: std::sync::mpsc::Sender<RuntimeCommand>,
+    runtime_tx: crate::runtime::RuntimeSender<RuntimeCommand>,
     cancellation_token: CancellationToken,
     task_failure_handler: Option<TaskFailureHandler>,
 ) {

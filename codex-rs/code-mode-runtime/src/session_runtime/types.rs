@@ -83,6 +83,7 @@ pub(crate) enum CellEvent {
 ///
 /// The owning session assigns the cell ID when it admits the request.
 pub(crate) struct CreateCellRequest {
+    pub(crate) heap_limit: Option<usize>,
     pub(crate) output_truncation: codex_code_mode_protocol::CodeModeOutputTruncation,
     pub(crate) tool_call_id: String,
     pub(crate) enabled_tools: Vec<ToolDefinition>,
@@ -95,6 +96,8 @@ pub(crate) struct ToolDefinition {
     pub(crate) tool_name: ToolName,
     pub(crate) description: String,
     pub(crate) kind: ToolKind,
+    pub(crate) input_schema: Option<JsonValue>,
+    pub(crate) output_schema: Option<JsonValue>,
 }
 
 /// A tool name with an optional namespace.

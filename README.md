@@ -1,3 +1,49 @@
+## Xcoder
+
+Xcoder is Waozi's source fork of OpenAI Codex, under the original Apache 2.0
+license. Tool orchestration uses Ziran compiled through Zi2c. The Rust session
+and approval protocols remain the authority for host operations. JavaScript
+tool cells have no execution path in this fork. Sessions share the Rust process;
+only active native cells start sandboxed children. Ordinary tool calls do not
+start a separate code-mode host. The optional JavaScript UI plugin renderer is
+excluded from the default build (`UI_FEATURES=codex-code-mode-runtime/ui` enables
+it when the corresponding upstream V8 artifacts are available).
+
+The initial native backend targets Linux with bubblewrap, a C compiler, Rust
+1.95 and a built Ziran toolchain. `ziran lock` resolves the pinned toolchain;
+local development uses an ignored `ziran.local.toml` override.
+The Make targets run Rust work at nice 19 and the lowest best-effort I/O priority in a shared
+user-systemd scope: a 1.5 GiB soft RAM target, 2 GiB hard RAM limit and up to
+64 GiB of swap, with one Cargo job by default. Active compiler pages still require RAM. On a host without a
+user-systemd manager, explicitly setting `XCODER_BUILD_SCOPE=0` omits only the
+memory scope. Completed artifacts are reused when a build is resumed.
+
+Run `make test` for Rust/C ABI, native sandbox, callback, host transport and
+offline full-CLI local tests. The CLI fixture runs a real shell tool through the
+embedded supervisor without contacting an external model service.
+`make` builds the CLI at `build/bin/xcoder` with its adjacent tool host.
+`make test` writes an installation receipt only after the full local suite passes;
+a failed rerun removes the earlier receipt. `make install` verifies the exact binaries and preserves
+Harmony's existing launcher, accounts and histories. It replaces the launcher's
+Codex executable for new invocations; running sessions are not restarted.
+Local interactive launches use the embedded server so an older stock Codex
+daemon cannot supply their tool runtime. Explicit remote endpoints keep their
+normal behavior.
+Update this fork from its source with `make test` and `make install`; the stock
+Codex package updater cannot replace the installed native fork.
+
+Native cells import `xcoder/runtime`. `Call(name, json)` returns caller-owned
+storage: inspect `Body(*reply)` and release it with `defer Release(*reply)`.
+`Text`, `Image`, `Audio`, `Notify`, `Store`, `Load`, `Catalog` and `Yield` provide
+output and session state. `CallBatch` runs arrays of `BatchCall` on up to four
+explicit threads, then joins them; release each result after use. A native cell has only its executable and callback
+socket; the compiler has only its binaries, headers, standard library and cell
+sources. Tool errors never fall back to JavaScript.
+
+The fork retains upstream documentation below.
+
+---
+
 <p align="center"><strong>Codex CLI</strong> is a coding agent from OpenAI that runs locally on your computer.
 <p align="center">
   <img src="https://github.com/openai/codex/blob/main/.github/codex-cli-splash.png" alt="Codex CLI splash" width="80%" />

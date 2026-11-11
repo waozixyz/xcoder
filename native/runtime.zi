@@ -1,0 +1,99 @@
+// Native cell API. Each request uses its own connection, so #parallel calls
+// cannot consume one another's replies. Storage is explicit and caller owned.
+using V :: #import "std/vec"
+using J :: #import "std/json_document"
+using B :: #import "std/byte_text_linux"
+Threads :: #import "std/thread_linux"
+c :: #system_library "libc";
+Socket :: (domain: s32, kind: s32, protocol: s32) -> s32 #foreign c "socket";
+Connect :: (fd: s32, address: *void, length: u32) -> s32 #foreign c "connect";
+Read :: (fd: s32, data: *u8, count: usize) -> s64 #foreign c "read";
+Send :: (fd: s32, data: *u8, count: usize, flags: s32) -> s64 #foreign c "send";
+Close :: (fd: s32) -> s32 #foreign c "close";
+Allocate :: (count: usize) -> *void #foreign c "malloc";
+Free :: (memory: *void) #foreign c "free";
+Errno :: () -> *s32 #foreign c "__errno_location";
+Address :: struct { family: u16; path: [108]u8; }
+Reply :: struct { data: *u8; length: s64; ok: bool; }
+
+WriteAll :: (fd: s32, bytes: []u8) -> bool {
+    at: s64
+    while at < bytes.count {
+        wrote := Send(fd, *bytes[at], cast(usize)(bytes.count - at), 16384)
+        if wrote < 0 && Errno().* == 4 { continue }
+        if wrote <= 0 { return false }; at += wrote
+    }; return true
+}
+ReadAll :: (fd: s32, bytes: []u8) -> bool {
+    at: s64
+    while at < bytes.count {
+        got := Read(fd, *bytes[at], cast(usize)(bytes.count - at))
+        if got < 0 && Errno().* == 4 { continue }
+        if got <= 0 { return false }; at += got
+    }; return true
+}
+Request :: (document: *JsonDocument) -> Reply {
+    result: Reply
+    fd := Socket(1, 524289, 0); if fd < 0 { return result }; defer { unused Close(fd) }
+    address: Address; address.family = 1
+    path := "/rpc"; for i: 0..path.count - 1 { address.path[i] = path[i] }
+    if Connect(fd, cast(*void)(*address), cast(u32)(2 + path.count + 1)) != 0 { return result }
+    // JsonWrite's returned string is owned storage; use the vector writer so
+    // requests are released immediately, including on transport failures.
+    wire: Vec(u8); defer VecFree(wire)
+    if !JsonWriteInto(*wire, document, document.root, JsonCompactStyle()) { return result }
+    if wire.count > 67108864 { return result }
+    header: [4]u8
+    for i: 0..3 { header[i] = cast(u8)(cast(u64)wire.count >> cast(u32)(i * 8)) }
+    if !WriteAll(fd, header[:]) || !WriteAll(fd, VecSlice(wire, 0, wire.count)) { return result }
+    if !ReadAll(fd, header[:]) { return result }
+    length: u64; for i: 0..3 { length |= cast(u64)header[i] << cast(u32)(i * 8) }
+    if length > 67108864 { return result }
+    result.length = cast(s64)length
+    if length > 0 {
+        result.data = cast(*u8)Allocate(cast(usize)length)
+        if result.data == null { return result }
+        if !ReadAll(fd, BytesFromPointer(result.data, length)) { Free(cast(*void)result.data); result.data = null; result.length = 0; return result }
+    }
+    result.ok = true; return result
+}
+Body :: (reply: *Reply) -> string { return TextFromBytes(BytesFromPointer(reply.data, cast(u64)reply.length)) }
+Release :: (reply: *Reply) { Free(cast(*void)reply.data); reply.data = null; reply.length = 0; reply.ok = false }
+Message :: (kind: string, name: string = "", value: string = "") -> Reply {
+    d: JsonDocument; unused JsonRead(*d, "{}"); defer JsonReset(*d)
+    unused JsonSet(*d, d.root, "op", JsonNewString(*d, kind))
+    unused JsonSet(*d, d.root, "name", JsonNewString(*d, name))
+    unused JsonSet(*d, d.root, "value", JsonNewString(*d, value))
+    return Request(*d)
+}
+// Function inputs are JSON text; freeform inputs are literal text. Tool replies
+// contain {"ok":true,"value":...} or {"ok":false,"error":"..."}.
+Call :: (name: string, input: string = "{}") -> Reply { return Message("call", name, input) }
+// Tool calls are effects, so they use explicit threads rather than Ziran's
+// checked pure #parallel regions. Four lanes bound native stack consumption.
+BatchCall :: struct { name: string; input: string; reply: Reply; thread: Threads.Thread; }
+RunBatchCall :: (argument: *void) {
+    call := cast(*BatchCall)argument
+    call.reply = Call(call.name, call.input)
+}
+CallBatch :: (calls: []BatchCall) {
+    start: s64
+    while start < calls.count {
+        end := start + 4; if end > calls.count { end = calls.count }
+        for i: start..end - 1 {
+            if !Threads.ThreadStart(*calls[i].thread, RunBatchCall, cast(*void)*calls[i]) {
+                calls[i].reply = Call(calls[i].name, calls[i].input)
+            }
+        }
+        for i: start..end - 1 { Threads.ThreadWait(*calls[i].thread) }
+        start = end
+    }
+}
+Text :: (value: string) { reply := Message("text", "", value); Release(*reply) }
+Image :: (json: string) { reply := Message("image", "", json); Release(*reply) }
+Audio :: (json: string) { reply := Message("audio", "", json); Release(*reply) }
+Notify :: (value: string) { reply := Message("notify", "", value); Release(*reply) }
+Store :: (key: string, json: string) { reply := Message("store", key, json); Release(*reply) }
+Load :: (key: string) -> Reply { return Message("load", key) }
+Catalog :: () -> Reply { return Message("catalog") }
+Yield :: () { reply := Message("yield"); Release(*reply) }

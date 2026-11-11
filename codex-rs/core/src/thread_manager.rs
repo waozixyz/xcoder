@@ -68,7 +68,6 @@ use codex_history::HistoryInitialization;
 use codex_history::InitialHistory;
 use codex_history::ResumedHistory;
 use codex_history::RolloutItem;
-use codex_install_context::InstallContext;
 use codex_login::AuthManager;
 use codex_login::CodexAuth;
 use codex_login::default_client::CODEX_INTERNAL_ORIGINATOR_OVERRIDE_ENV_VAR;
@@ -675,10 +674,18 @@ impl ThreadManager {
             if config.features.enabled(Feature::CodeModeHost)
                 || config.code_mode.disable_in_process_fallback
             {
-                Self::process_code_mode_session_provider(
-                    config,
-                    InstallContext::current().code_mode_host_program(),
-                )
+                // The native supervisor owns no untrusted in-process engine:
+                // Zi2c compilation and execution use separate private sandboxes.
+                let provider: Arc<dyn CodeModeSessionProvider> =
+                    Arc::new(codex_code_mode_runtime::NativeCodeModeSessionProvider);
+                if config
+                    .features
+                    .enabled(Feature::CodeModeHostOutputTruncation)
+                {
+                    Arc::new(crate::code_mode_host::LocalServerOutputProvider { inner: provider })
+                } else {
+                    provider
+                }
             } else {
                 Arc::new(DisabledCodeModeSessionProvider)
             };

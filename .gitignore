@@ -1,4 +1,6 @@
 # deps
+ziran.local.toml
+backup/
 # Node.js dependencies
 node_modules
 .pnpm-store

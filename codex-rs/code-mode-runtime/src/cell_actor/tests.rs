@@ -2,11 +2,9 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use std::sync::atomic::AtomicBool;
 use std::sync::atomic::Ordering;
-use std::sync::mpsc as std_mpsc;
 use std::time::Duration;
 
 use codex_code_mode_protocol::CodeModeOutputTruncation;
-use codex_code_mode_protocol::ExecuteRequest;
 use codex_code_mode_protocol::host::BOUNDED_OUTPUT_MAX_IMAGE_BYTES;
 use pretty_assertions::assert_eq;
 use serde_json::Value as JsonValue;
@@ -100,7 +98,7 @@ struct CellActorHarness {
     yield_signal: CancellationToken,
     initial_event_rx: oneshot::Receiver<Result<CellEvent, CellError>>,
     task: tokio::task::JoinHandle<()>,
-    runtime_control_rx: std_mpsc::Receiver<RuntimeControlCommand>,
+    runtime_control_rx: mpsc::UnboundedReceiver<RuntimeControlCommand>,
     _runtime_event_rx: mpsc::UnboundedReceiver<RuntimeEvent>,
 }
 
@@ -130,22 +128,10 @@ fn spawn_cell_actor_harness_with_host_and_failure_handler<H: CellHost>(
     let output = OutputCollector::new(output_truncation);
     let (command_tx, command_rx) = mpsc::unbounded_channel();
     let (initial_event_tx, initial_event_rx) = oneshot::channel();
-    let (runtime_event_tx, runtime_event_rx) = mpsc::unbounded_channel();
-    let (runtime_tx, _runtime_control_tx, runtime_terminate_handle) = spawn_runtime(
-        HashMap::new(),
-        ExecuteRequest {
-            tool_call_id: "call-1".to_string(),
-            enabled_tools: Vec::new(),
-            source: "await new Promise(() => {});".to_string(),
-            yield_time_ms: None,
-            max_output_tokens: None,
-        },
-        runtime_event_tx,
-        PendingRuntimeMode::PauseUntilResumed,
-        /*task_failure_handler*/ None,
-    )
-    .unwrap();
-    let (runtime_control_tx, runtime_control_rx) = std_mpsc::channel();
+    let (_, runtime_event_rx) = mpsc::unbounded_channel();
+    let (runtime_tx, _runtime_command_rx) = mpsc::unbounded_channel();
+    let runtime_terminate_handle = crate::runtime::TerminationHandle::new();
+    let (runtime_control_tx, runtime_control_rx) = mpsc::unbounded_channel();
     let cell_state = Arc::new(CellState::new(CancellationToken::new()));
     let handle = CellHandle::new(command_tx, Arc::clone(&cell_state));
     let yield_signal = CancellationToken::new();
@@ -256,7 +242,7 @@ async fn unexpected_runtime_thread_exit_is_reported_to_the_session_owner() {
             .await
             .expect("runtime failure timeout")
             .expect("runtime failure"),
-        "code-mode V8 runtime thread ended unexpectedly"
+        "code-mode native runtime ended unexpectedly"
     );
     assert!(
         harness
@@ -553,7 +539,7 @@ async fn dropped_yield_observer_preserves_output_for_the_next_observation() {
 #[tokio::test]
 async fn dropped_pending_observer_preserves_the_frontier_for_the_next_observation() {
     let host = Arc::new(RecordingHost::default());
-    let harness = spawn_cell_actor_harness_with_host(
+    let mut harness = spawn_cell_actor_harness_with_host(
         ObserveMode::YieldAfter(Duration::from_secs(60)),
         Arc::clone(&host),
     );
@@ -608,9 +594,15 @@ async fn dropped_pending_observer_preserves_the_frontier_for_the_next_observatio
             pending_tool_call_ids: vec!["tool-1".to_string()],
         })
     );
+    // A native explicit yield suspends execution, so the first new observer
+    // resumes it once. The dropped pending observer must not resume it again.
     assert!(matches!(
         harness.runtime_control_rx.try_recv(),
-        Err(std_mpsc::TryRecvError::Empty)
+        Ok(RuntimeControlCommand::Resume)
+    ));
+    assert!(matches!(
+        harness.runtime_control_rx.try_recv(),
+        Err(mpsc::error::TryRecvError::Empty)
     ));
 
     let termination = harness.handle.terminate();

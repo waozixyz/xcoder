@@ -2868,6 +2868,7 @@ name = "codex-code-mode-runtime"
 version = "0.0.0"
 dependencies = [
  "base64 0.22.1",
+ "cc",
  "codex-code-mode-protocol",
  "codex-plugin-host",
  "codex-protocol",
@@ -2876,9 +2877,12 @@ dependencies = [
  "codex-utils-string",
  "deno_core_icudata",
  "futures",
+ "libc",
  "opentelemetry",
  "pretty_assertions",
+ "serde",
  "serde_json",
+ "tempfile",
  "tokio",
  "tokio-util",
  "tracing",
@@ -3023,6 +3027,7 @@ dependencies = [
  "codex-backend-client",
  "codex-client",
  "codex-code-mode",
+ "codex-code-mode-runtime",
  "codex-config",
  "codex-connectors",
  "codex-context-fragments",
